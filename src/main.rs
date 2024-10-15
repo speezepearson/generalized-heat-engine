@@ -1,6 +1,6 @@
 use std::{fmt::Display, mem::swap};
 
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{seq::SliceRandom, RngCore, SeedableRng};
 
 const BATTERY_SIZE: usize = 30;
 const HOT_BATH_SIZE: usize = 60;
@@ -157,24 +157,10 @@ impl Rule for Vec<Box<dyn Rule>> {
 }
 
 fn generate_random_permutation(n: usize, seed: u64) -> Vec<usize> {
-    // adapted from https://www.cs.cornell.edu/gries/TechReports/86-786.pdf
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-
-    let mut b: Vec<usize> = (0..n).collect();
-
-    let mut i = n - 1;
-
-    while i != 0 {
-        let r: f64 = rng.gen(); // generates a random float in [0, 1)
-        let s = (i as f64 * r).floor() as usize;
-
-        // Swap b[i] and b[s]
-        b.swap(i, s);
-
-        i -= 1;
-    }
-
-    b
+    let mut permutation = (0..n).collect::<Vec<usize>>();
+    permutation.shuffle(&mut rng);
+    permutation
 }
 
 fn permute<T: Clone, S: AsMut<[T]>>(permutation: &Vec<usize>, xs: &mut S) {
