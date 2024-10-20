@@ -1,29 +1,54 @@
-use std::{fmt::Display, mem::swap};
+use std::{fmt::Display, iter::Sum, mem::swap};
 
 use rand::{seq::SliceRandom, RngCore, SeedableRng};
 
-const BATTERY_SIZE: usize = 30;
-const HOT_BATH_SIZE: usize = 60;
-const N_STEPS: u64 = 1000;
+const BATTERY_SIZE: usize = 20;
+const BATH_SIZE: usize = 200;
+const N_STEPS: u64 = 1000000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct World {
     t: i64,
     battery: Vec<bool>,
     hot_bath: Vec<bool>,
-    // cold_bath: [bool; HOT_BATH_SIZE],
+    cold_bath: Vec<bool>,
+}
+
+fn sumbools(xs: &Vec<bool>) -> usize {
+    xs.iter().map(|&x| x as usize).sum()
 }
 
 impl Display for World {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:>width$} [", self.t, width = 5)?;
-        for i in 0..BATTERY_SIZE {
-            write!(f, "{}", if self.battery[i] { "#" } else { " " })?;
-        }
-        write!(f, "] [")?;
-        for i in 0..HOT_BATH_SIZE {
-            write!(f, "{}", if self.hot_bath[i] { "#" } else { " " })?;
-        }
+        write!(
+            f,
+            "{t:>width$} [({h:>3}/{l:>3})",
+            t = self.t,
+            width = 5,
+            h = sumbools(&self.battery),
+            l = self.battery.len()
+        )?;
+        // for i in 0..BATTERY_SIZE {
+        //     write!(f, "{}", if self.battery[i] { "#" } else { " " })?;
+        // }
+        write!(
+            f,
+            "] [({h:>3}/{l:>3})",
+            h = sumbools(&self.hot_bath),
+            l = self.hot_bath.len()
+        )?;
+        // for i in 0..self.hot_bath.len() {
+        //     write!(f, "{}", if self.hot_bath[i] { "#" } else { " " })?;
+        // }
+        write!(
+            f,
+            "] [({h:>3}/{l:>3})",
+            h = sumbools(&self.cold_bath),
+            l = self.cold_bath.len()
+        )?;
+        // for i in 0..self.cold_bath.len() {
+        //     write!(f, "{}", if self.cold_bath[i] { "#" } else { " " })?;
+        // }
         write!(f, "]")?;
         Ok(())
     }
@@ -53,21 +78,26 @@ impl Rule for ProbeAndSwap {
 struct Permute {
     battery: Vec<usize>,
     hot_bath: Vec<usize>,
+    cold_bath: Vec<usize>,
 }
 
 impl Rule for Permute {
     fn step(&self, world: &mut World) {
         permute(&self.battery, &mut world.battery);
         permute(&self.hot_bath, &mut world.hot_bath);
+        permute(&self.cold_bath, &mut world.cold_bath);
     }
 
     fn inverse(&self) -> Box<dyn Rule> {
         let mut inverse = self.clone();
-        for i in 0..BATTERY_SIZE {
+        for i in 0..self.battery.len() {
             inverse.battery[self.battery[i]] = i;
         }
-        for i in 0..HOT_BATH_SIZE {
+        for i in 0..self.hot_bath.len() {
             inverse.hot_bath[self.hot_bath[i]] = i;
+        }
+        for i in 0..self.cold_bath.len() {
+            inverse.cold_bath[self.cold_bath[i]] = i;
         }
         Box::new(inverse)
     }
@@ -82,7 +112,11 @@ struct WeirdPermute {
 impl Rule for WeirdPermute {
     fn step(&self, world: &mut World) {
         let t = world.t - if self.inverted { 1 } else { 0 };
-        for target in [&mut world.battery, &mut world.hot_bath] {
+        for target in [
+            &mut world.battery,
+            &mut world.hot_bath,
+            &mut world.cold_bath,
+        ] {
             let mut perm =
                 generate_random_permutation(target.len(), self.seed.wrapping_add_signed(t));
             if self.inverted {
@@ -117,6 +151,7 @@ mod test {
                     true, false, true, false, true, false, true, false, true, false,
                 ]
                 .to_vec(),
+                cold_bath: [false; 10].to_vec(),
             };
             let permute = WeirdPermute {
                 seed: 0,
@@ -134,9 +169,31 @@ mod test {
                         .to_vec(),
                     hot_bath: [true, false, true, false, true, false, true, false, true, false,]
                         .to_vec(),
+                    cold_bath: [false; 10].to_vec(),
                 }
             );
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CondSwap;
+
+impl Rule for CondSwap {
+    fn step(&self, world: &mut World) {
+        let h = &mut world.hot_bath;
+        let c = &mut world.cold_bath;
+        let b = &mut world.battery;
+        if (h[0], h[1], c[0], b[0]) == (true, true, false, false)
+            || (h[0], h[1], c[0], b[0]) == (false, false, true, true)
+        {
+            swap(&mut h[0], &mut c[0]);
+            swap(&mut h[1], &mut b[0]);
+        }
+    }
+
+    fn inverse(&self) -> Box<dyn Rule> {
+        Box::new(Self)
     }
 }
 
@@ -197,7 +254,10 @@ fn main() {
     let mut world = World {
         t: 0,
         battery: [false; BATTERY_SIZE].to_vec(),
-        hot_bath: [true; HOT_BATH_SIZE].to_vec(),
+        hot_bath: [[true; BATH_SIZE / 2], [false; BATH_SIZE / 2]]
+            .to_vec()
+            .concat(),
+        cold_bath: [false; BATH_SIZE].to_vec(),
     };
     let mut revworld = world.clone();
 
@@ -206,10 +266,10 @@ fn main() {
         inverted: false,
     };
 
-    let rules: Vec<Box<dyn Rule>> = vec![Box::new(ProbeAndSwap), Box::new(permutation)];
+    let rules: Vec<Box<dyn Rule>> = vec![Box::new(CondSwap), Box::new(permutation)];
     let inv_rules = rules.inverse();
 
-    println!("{world}  ---  {revworld}");
+    println!("{world} ");
     for _ in 0..N_STEPS {
         rules.step(&mut world);
         world.t += 1;
@@ -217,19 +277,25 @@ fn main() {
         inv_rules.step(&mut revworld);
         revworld.t -= 1;
 
-        println!("{world}  ---  {revworld}");
+        if world.t > 0 && is_pow2(world.t as u64) {
+            println!("{world} ");
+        }
     }
 
-    println!("\n\n\n");
+    // println!("\n\n\n");
 
-    println!("{world}  ---  {revworld}");
-    for _ in 0..N_STEPS {
-        inv_rules.step(&mut world);
-        world.t -= 1;
+    // println!("{world}  ---  {revworld}");
+    // for _ in 0..N_STEPS {
+    //     inv_rules.step(&mut world);
+    //     world.t -= 1;
 
-        rules.step(&mut revworld);
-        revworld.t += 1;
+    //     rules.step(&mut revworld);
+    //     revworld.t += 1;
 
-        println!("{world}  ---  {revworld}");
-    }
+    //     println!("{world}  ---  {revworld}");
+    // }
+}
+
+fn is_pow2(n: u64) -> bool {
+    n & (n - 1) == 0
 }
