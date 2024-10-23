@@ -28,27 +28,27 @@ impl Display for World {
             h = sumbools(&self.battery),
             l = self.battery.len()
         )?;
-        // for i in 0..BATTERY_SIZE {
-        //     write!(f, "{}", if self.battery[i] { "#" } else { " " })?;
-        // }
+        for i in 0..BATTERY_SIZE {
+            write!(f, "{}", if self.battery[i] { "#" } else { " " })?;
+        }
         write!(
             f,
             "] [({h:>3}/{l:>3})",
             h = sumbools(&self.hot_bath),
             l = self.hot_bath.len()
         )?;
-        // for i in 0..self.hot_bath.len() {
-        //     write!(f, "{}", if self.hot_bath[i] { "#" } else { " " })?;
-        // }
+        for i in 0..self.hot_bath.len() {
+            write!(f, "{}", if self.hot_bath[i] { "#" } else { " " })?;
+        }
         write!(
             f,
             "] [({h:>3}/{l:>3})",
             h = sumbools(&self.cold_bath),
             l = self.cold_bath.len()
         )?;
-        // for i in 0..self.cold_bath.len() {
-        //     write!(f, "{}", if self.cold_bath[i] { "#" } else { " " })?;
-        // }
+        for i in 0..self.cold_bath.len() {
+            write!(f, "{}", if self.cold_bath[i] { "#" } else { " " })?;
+        }
         write!(f, "]")?;
         Ok(())
     }
@@ -261,24 +261,59 @@ fn main() {
     };
     let mut revworld = world.clone();
 
-    let permutation = WeirdPermute {
+    let permutation1 = {
+        let p = WeirdPermute {
+            seed: rand::thread_rng().next_u64(),
+            inverted: false,
+        };
+        println!("p1 seed {}", p.seed);
+        p
+    };
+
+    let permutation2 = WeirdPermute {
         seed: rand::thread_rng().next_u64(),
         inverted: false,
     };
 
-    let rules: Vec<Box<dyn Rule>> = vec![Box::new(CondSwap), Box::new(permutation)];
-    let inv_rules = rules.inverse();
+    let rules1: Vec<Box<dyn Rule>> = vec![Box::new(CondSwap), Box::new(permutation1)];
+    let inv_rules1 = rules1.inverse();
+    let rules2: Vec<Box<dyn Rule>> = vec![Box::new(CondSwap), Box::new(permutation2)];
+    let inv_rules2 = rules2.inverse();
 
-    println!("{world} ");
-    for _ in 0..N_STEPS {
-        rules.step(&mut world);
+    println!("{world}");
+    while sumbools(&world.battery) < world.battery.len() / 2 {
+        rules1.step(&mut world);
         world.t += 1;
 
-        inv_rules.step(&mut revworld);
-        revworld.t -= 1;
+        // inv_rules.step(&mut revworld);
+        // revworld.t -= 1;
 
-        if world.t > 0 && is_pow2(world.t as u64) {
-            println!("{world} ");
+        if true || world.t > 0 && is_pow2(world.t as u64) {
+            println!("{world}");
+        }
+    }
+
+    println!("\n\n\n");
+
+    {
+        let p = WeirdPermute {
+            seed: rand::thread_rng().next_u64(),
+            inverted: false,
+        };
+        println!("mid seed {}", p.seed);
+        p;
+    }
+    // .step(&mut world);
+
+    for _ in 0..300 {
+        inv_rules1.step(&mut world);
+        world.t -= 1;
+
+        // inv_rules.step(&mut revworld);
+        // revworld.t -= 1;
+
+        if true || world.t > 0 && is_pow2(world.t as u64) {
+            println!("{world}");
         }
     }
 
